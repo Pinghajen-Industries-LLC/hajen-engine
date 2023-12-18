@@ -1,0 +1,4 @@
+greenlet==3.0.2
+msgpack==1.0.7
+pynvim==0.5.0
+uvloop==0.19.0
