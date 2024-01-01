@@ -1,1 +1,6 @@
 venv/*
+logs/*
+**/__pycache__/
+data/
+
+.vimspector.json
