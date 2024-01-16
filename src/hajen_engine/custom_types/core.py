@@ -15,4 +15,5 @@ class EnvData(TypedDict, total=True):
     root: TaskType
     core: TaskType
     tasks: Tasks
+    library_logging_levels: dict[str, str]
 

@@ -1,0 +1,11 @@
+Metadata-Version: 2.1
+Name: hajen-engine
+Version: 0.0.1b0
+Summary: Runs multiple asyncio loops on different cores
+Author-email: pinghajen <pinghajen@gmail.com>
+Project-URL: Homepage, https://github.com/pinghajen/hajen-engine
+Project-URL: Bug Tracker, https://github.com/pinghajen/hajen-engine/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown

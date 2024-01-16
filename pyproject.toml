@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hajen-engine"
-version = "0.0.1b"
+version = "0.0.1b0"
 authors = [
   { name="pinghajen", email="pinghajen@gmail.com" },
 ]
@@ -17,5 +17,6 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = ""
-"Bug Tracker" = ""
+"Homepage" = "https://github.com/pinghajen/hajen-engine"
+"Bug Tracker" = "https://github.com/pinghajen/hajen-engine/issues"
+

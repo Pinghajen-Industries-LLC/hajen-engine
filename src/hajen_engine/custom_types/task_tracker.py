@@ -1,11 +1,11 @@
 import asyncio
 
-from typing import TypedDict
+from typing import Optional, TypedDict
 
 class Task(TypedDict, total=True):
     running: bool
     last_run: float
     cooldown: float
-    task: asyncio.Task
+    task: Optional[asyncio.Task] | None
 
 RunningTasks = dict[str, Task]

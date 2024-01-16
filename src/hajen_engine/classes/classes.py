@@ -4,13 +4,14 @@ import json
 import logging
 import multiprocessing
 
+from typing import Optional
 from datetime import datetime
 
 from asyncio import Task
-from src.custom_types.task_tracker import Task as TaskType
-from src.custom_types.task_tracker import RunningTasks
-from src.custom_types.communication import PacketWithHeaders
-from src.custom_types.communication import Packet
+from hajen_engine.custom_types.task_tracker import Task as TaskType
+from hajen_engine.custom_types.task_tracker import RunningTasks
+from hajen_engine.custom_types.communication import PacketWithHeaders
+from hajen_engine.custom_types.communication import Packet
 
 
 class TaskTracker():
@@ -70,7 +71,8 @@ class TaskTracker():
         key: str,
         running: bool = True,
         cooldown: float = 60.0,
-        task: asyncio.Task = asyncio.create_task(asyncio.sleep(0)),
+        # task: asyncio.Task = asyncio.create_task(asyncio.sleep(0)),
+        task: Optional[asyncio.Task] = None,
         update_last_run: bool = False,
         update_cooldown: bool = False,
         update_task: bool = False,
@@ -84,7 +86,7 @@ class TaskTracker():
                     else self.running_tasks[key]["last_run"],
                     "cooldown": cooldown if update_cooldown
                     else self.running_tasks[key]["cooldown"],
-                    "task": task if update_task
+                    "task": task if task is not None
                     else self.running_tasks[key]["task"],
                 }
             )
@@ -97,7 +99,8 @@ class TaskTracker():
                 else datetime.timestamp(
                     datetime.utcnow()) - ((cooldown)),
                 "cooldown": cooldown,
-                "task": task
+                "task": task if task is not None
+                else None,
             }
             return None
 

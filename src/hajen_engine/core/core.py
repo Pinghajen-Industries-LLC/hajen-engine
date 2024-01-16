@@ -8,8 +8,8 @@ import time
 
 from json import load
 from multiprocessing import Queue, Manager
-from src.custom_types.communication import PacketWithHeaders
-from src.custom_types.core import EnvData
+from hajen_engine.custom_types.communication import PacketWithHeaders
+from hajen_engine.custom_types.core import EnvData
 
 from asyncio_task_logger import task_logger
 from typing import Any, Literal

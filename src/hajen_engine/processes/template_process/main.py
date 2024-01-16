@@ -1,9 +1,9 @@
 import asyncio
 import logging
 
-from src.classes.classes import ProcessClass
+from hajen_engine.classes.classes import ProcessClass
 
-from src.custom_types.communication import PacketWithHeaders
+from hajen_engine.custom_types.communication import PacketWithHeaders
 
 logger = logging.getLogger(__name__)
 
