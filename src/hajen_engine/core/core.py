@@ -73,8 +73,8 @@ class Core:
                 target=self.run_low_priority_manager,
                 kwargs={
                     "logger": logger,
-                    "receive_queue": self.low_priority_send_queue,
-                    "send_queue": self.low_priority_receive_queue,
+                    "receive_queue": self.low_priority_receive_queue,
+                    "send_queue": self.low_priority_send_queue,
                     "low_priority_setup_queue": self.low_priority_setup_queue,
                     }
                 )
@@ -89,16 +89,10 @@ class Core:
                         self.env_data["tasks"][task_type][task]['enabled']
                         and task not in self.tasks[task_type].keys()
                     ):
-                    receive_queue: multiprocessing.Queue[PacketWithHeaders] = multiprocessing.Queue()
-                    send_queue: multiprocessing.Queue[PacketWithHeaders] = multiprocessing.Queue()
-                    # receive_queue = self.manager.Queue()
-                    # send_queue = self.manager.Queue()
                     if self.env_data['tasks'][task_type][task]['high_priority']:
-                        temp_object = self.setup_object(
+                        temp_object, receive_queue, send_queue = self.setup_object(
                                 manager_type=task_type,
                                 object_name=task,
-                                receive_queue=receive_queue,
-                                send_queue=send_queue,
                                 )
                         logger.info("Setting up high priority tasks")
                         try:
@@ -153,8 +147,6 @@ class Core:
             self,
             manager_type,
             object_name,
-            receive_queue,
-            send_queue
             ):
         logger.info(f"Setting up and starting {manager_type}.{object_name}")
         temp_module = importlib.import_module(
@@ -162,10 +154,9 @@ class Core:
         )
         # This backwards looking naming is intentional since it's named is based on the perpective of the process
         temp_object = temp_module.Main(self.env_data)
-        temp_object.receive_queue = send_queue
-        temp_object.send_queue = receive_queue
+        receive_queue, send_queue = temp_object.get_queues()
         temp_object.logger_queue = self.logger
-        return temp_object
+        return temp_object, receive_queue, send_queue
 
     def run_low_priority_manager(
             self,
@@ -199,15 +190,10 @@ class Core:
                 }
         while True:
             if not low_priority_setup_queue.empty():
-                logger.debug(f"1")
                 process = low_priority_setup_queue.get()[1]
-                temp_receive_queue: multiprocessing.Queue[PacketWithHeaders] = multiprocessing.Queue()
-                temp_send_queue: multiprocessing.Queue[PacketWithHeaders] = multiprocessing.Queue()
-                temp_object = self.setup_object(
+                temp_object, receive_queue, send_queue = self.setup_object(
                         process[0],
                         process[1],
-                        temp_receive_queue,
-                        temp_send_queue,
                     )
                 temp_future = task_logger.create_task(
                         temp_object.run(),
@@ -215,8 +201,8 @@ class Core:
                         message="Task raised an exception",
                         )
                 local_tasks[process[0]][process[1]] = {
-                        "send_queue": temp_send_queue,
-                        "receive_queue": temp_receive_queue,
+                        "send_queue": send_queue,
+                        "receive_queue": receive_queue,
                         "object": temp_object,
                         "enabled": True,
                         "process": temp_future,

@@ -13,7 +13,7 @@ from hajen_engine.core.core import Core
 from hajen_engine.custom_types.core import EnvData
 
 global __version__
-__version__ = "engine-0.0.1b"
+__version__ = "engine-0.0.2b1"
 
 
 # with open("data/environment.json", "r") as file:
@@ -41,10 +41,11 @@ def setup_logging(env_data):
         ],
         format="%(levelname)s:%(name)s:%(lineno)s:%(message)s",
     )
+    logger = logging.getLogger(__name__)
     logging.raiseExceptions = True
-    for module in env_data["logging"]["modules"]:
-        botocore_log = logging.getLogger(module)
-        botocore_log.setLevel(getattr(logging, env_data["library_logging_levels"][module]))
+    for module in env_data["library_logging_levels"].keys():
+        module_logger = logging.getLogger(module)
+        module_logger.setLevel(getattr(logging, env_data["library_logging_levels"][module]))
 
 
 async def async_run():
@@ -69,11 +70,11 @@ def run():
     """
     Main entry point for the engine.
     """
-    if asyncio.get_running_loop() is not None:
+    try:
+        asyncio.get_running_loop()
         asyncio.create_task(async_run())
-    else:
+    except RuntimeError:
         asyncio.run(async_run())
-        raise Exception("Engine is already running")
 
 # if __name__ == "__main__":
     # try:

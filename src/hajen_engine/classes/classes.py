@@ -4,7 +4,7 @@ import json
 import logging
 import multiprocessing
 
-from typing import Optional
+from typing import Optional, Tuple, Generator
 from datetime import datetime
 
 from asyncio import Task
@@ -13,6 +13,35 @@ from hajen_engine.custom_types.task_tracker import RunningTasks
 from hajen_engine.custom_types.communication import PacketWithHeaders
 from hajen_engine.custom_types.communication import Packet
 
+
+class QueueWrapper():
+    def __init__(self):
+        self.event = multiprocessing.Event()
+        self.queue: multiprocessing.Queue[PacketWithHeaders] = multiprocessing.Queue()
+
+    def put(self, item):
+        self.queue.put(item)
+
+    def get(self) -> Generator[PacketWithHeaders, None, bool]:
+        if self.event.is_set():
+            queue = self.queue.get()
+            yield queue
+            return False
+        else:
+            self.clear()
+            return True
+
+    def is_set(self):
+        self.event.is_set()
+
+    def set(self):
+        self.event.set()
+
+    def clear(self):
+        self.event.clear()
+
+    def empty(self):
+        return True
 
 class TaskTracker():
     def __init__(self) -> None:
@@ -117,7 +146,6 @@ class TaskTracker():
                 int(json.loads(data_packet[2]))["scheduled_task"]["interval"]
             )
 
-
 class BaseClass(TaskTracker):
     def __init__(self) -> None:
         super().__init__()
@@ -131,17 +159,34 @@ class BaseClass(TaskTracker):
 
         # self.scheduled_tasks = dict()
 
-        self.send_queue: multiprocessing.Queue[PacketWithHeaders] = multiprocessing.Queue()
-        self.receive_queue: multiprocessing.Queue[PacketWithHeaders] = multiprocessing.Queue()
+        self.send_queue: QueueWrapper = QueueWrapper()
+        self.receive_queue: QueueWrapper = QueueWrapper()
 
         self.logger_queue: multiprocessing.Queue = multiprocessing.Queue()
 
     async def _read_queue(self,
                           ) -> list[PacketWithHeaders]:
         queue: list[PacketWithHeaders] = []
-        while not self.receive_queue.empty():
-            queue.append(self.receive_queue.get())
+        for queue_item in self.receive_queue.get():
+            match queue_item:
+                case False:
+                    queue.append(queue_item)
+                case True:
+                    return queue
+                case _:
+                    raise Exception(f'Unexpected error: {type(queue_item)}')
         return queue
+
+    def get_queues(self,
+                   ) -> tuple[QueueWrapper, QueueWrapper]:
+        '''
+        Returns the send and receive queues.
+
+        This is intentionally backwards to how it is used
+        in core.py because it is named from the perspective
+        of the process using the queues.
+        '''
+        return (self.send_queue, self.receive_queue, )
 
     def logger(
             self,
