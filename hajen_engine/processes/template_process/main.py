@@ -3,7 +3,7 @@ import logging
 
 from hajen_engine.classes.classes import ProcessClass
 
-from hajen_engine.custom_types.communication import PacketWithHeaders
+from hajen_engine.custom_types.communication import PacketWithHeaders, Packet
 
 logger = logging.getLogger(__name__)
 
@@ -61,5 +61,19 @@ class Main(ProcessClass):
         """
         """
         logger.info("Running start_process()")
+        for _ in range(10):
+            self.send_queue.put(PacketWithHeaders (
+                "drivers.template_driver",
+                0,
+                Packet (
+                    source="processes.template_process",
+                    job_id="1",
+                    data={},
+                    destination="drivers.template_driver",
+                    result="0",
+                    datatype="",
+                    requestid=await self.get_request_id(self.source),
+                    ),
+            ))
 
         return {"result": 0}

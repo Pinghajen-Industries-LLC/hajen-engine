@@ -14,34 +14,38 @@ from hajen_engine.custom_types.communication import PacketWithHeaders
 from hajen_engine.custom_types.communication import Packet
 
 
+# This needs some sort of lock on it to prevent deadlocks
 class QueueWrapper():
     def __init__(self):
         self.event = multiprocessing.Event()
         self.queue: multiprocessing.Queue[PacketWithHeaders] = multiprocessing.Queue()
+        self.lock = multiprocessing.Lock()
 
     def put(self, item):
-        self.queue.put(item)
+        with self.lock:
+            self.queue.put(item)
 
     def get(self) -> Generator[PacketWithHeaders, None, bool]:
-        if self.event.is_set():
+        with self.lock:
             queue = self.queue.get()
             yield queue
             return False
-        else:
-            self.clear()
-            return True
 
     def is_set(self):
-        self.event.is_set()
+        with self.lock:
+            self.event.is_set()
 
     def set(self):
-        self.event.set()
+        with self.lock:
+            self.event.set()
 
     def clear(self):
-        self.event.clear()
+        with self.lock:
+            self.event.clear()
 
     def empty(self):
-        return True
+        with self.lock:
+            return self.queue.empty()
 
 class TaskTracker():
     def __init__(self) -> None:
