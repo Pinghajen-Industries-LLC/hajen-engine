@@ -14,40 +14,6 @@ from hajen_engine.custom_types.task_tracker import Task as TaskType
 from hajen_engine.custom_types.task_tracker import RunningTasks
 from hajen_engine.custom_types.communication import Packet
 
-
-# This needs some sort of lock on it to prevent deadlocks
-# class QueueWrapper():
-    # def __init__(self):
-        # self.event = multiprocessing.Event()
-        # self.queue: multiprocessing.Queue[Packet] = multiprocessing.Queue()
-        # self.lock = multiprocessing.Lock()
-
-    # def put(self, item):
-        # with self.lock:
-            # self.queue.put(item)
-
-    # def get(self) -> Generator[Packet, None, bool]:
-        # with self.lock:
-            # queue = self.queue.get()
-            # yield queue
-            # return False
-
-    # def is_set(self):
-        # with self.lock:
-            # self.event.is_set()
-
-    # def set(self):
-        # with self.lock:
-            # self.event.set()
-
-    # def clear(self):
-        # with self.lock:
-            # self.event.clear()
-
-    # def empty(self):
-        # with self.lock:
-            # return self.queue.empty()
-
 class QueueWrapper:
     def __init__(self):
         self.queue: multiprocessing.Queue[Packet] = multiprocessing.Queue()
@@ -186,11 +152,12 @@ class BaseClass(TaskTracker):
         self.logger_queue: multiprocessing.Queue = multiprocessing.Queue()
 
     async def _read_queue(self,
-                          ) -> list[Optional[Packet]]:
-        queue: list[Optional[Packet]] = []
+                          ) -> list[Packet]:
+        queue: list[Packet] = []
         while not self.receive_queue.empty():
             queue_item = self.receive_queue.get()
-            queue.append(queue_item)
+            if queue_item is not None:
+                queue.append(queue_item)
         return queue
 
     def get_queues(self,

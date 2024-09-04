@@ -262,18 +262,17 @@ class Core:
                 current = self.tasks[task_type][task_name]
                 if current["receive_queue"].empty():
                     continue
-                logger.info("Getting out of queue")
+                logger.debug("Getting out of queue")
                 packet = current["receive_queue"].get()
                 logger.debug(packet)
-                if packet is None:
-                    continue
-                logger.info("Getting destination")
+                logger.debug("Getting destination")
                 destination = packet["destination"].split(".")
-                logger.info("Putting into queue")
+                logger.debug("Putting into queue")
+                # TODO: add a check for if a task is disabled
                 self.tasks[destination[0]][destination[1]]["send_queue"].put(
                     packet
                 )
-                logger.info("Done?")
+                logger.debug("Done?")
 
 
     """The methods driver_manager() and process_manager() are very similar
