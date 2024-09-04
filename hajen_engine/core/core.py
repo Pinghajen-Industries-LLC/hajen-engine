@@ -8,7 +8,7 @@ import time
 
 from json import load
 from multiprocessing import Queue, Manager
-from hajen_engine.custom_types.communication import PacketWithHeaders
+from hajen_engine.custom_types.communication import Packet
 from hajen_engine.custom_types.core import EnvData
 
 from asyncio_task_logger import task_logger
@@ -43,8 +43,8 @@ class Core:
         self.logger: multiprocessing.Queue[tuple[str, str]] = multiprocessing.Queue()
         self.low_priority_setup_queue: multiprocessing.Queue[tuple[Literal['SETUP'], tuple[str, str]]] = multiprocessing.Queue()
 
-        self.low_priority_receive_queue: multiprocessing.Queue[PacketWithHeaders] = multiprocessing.Queue()
-        self.low_priority_send_queue: multiprocessing.Queue[PacketWithHeaders] = multiprocessing.Queue()
+        self.low_priority_receive_queue: multiprocessing.Queue[Packet] = multiprocessing.Queue()
+        self.low_priority_send_queue: multiprocessing.Queue[Packet] = multiprocessing.Queue()
         self.core_count = multiprocessing.cpu_count()
         self.last_cpu_affinity = 1
         # Gives the OS, distro, version, and architecture
@@ -246,9 +246,7 @@ class Core:
             await asyncio.sleep(1)
 
     async def _read_queue(self) -> None:
-        # try:
         while True:
-            # logger.info("Starting _read_queue()")
             enabled_tasks = [
                 (t, i)
                 for t in self.tasks.keys()
@@ -256,21 +254,26 @@ class Core:
                 if self.tasks[t][i]["enabled"]
             ]
 
-            for i in enabled_tasks:
-                current = self.tasks[i[0]][i[1]]
-                while not current["receive_queue"].empty():
-                    logger.info("Getting out of queue")
-                    packet = current["receive_queue"].get()
-                    logger.info("Getting destination")
-                    destination = packet[1].split(".")
-                    logger.info("Putting into queue")
-                    packet_to_send = (packet[0], packet[1], packet[2], )
-                    self.tasks[destination[0]][destination[1]]["send_queue"].put(
-                        packet_to_send
-                    )
-                    logger.info("Done?")
-        # except KeyboardInterrupt:
-            # self.pool.close()
+            if not enabled_tasks:
+                await asyncio.sleep(0.1)
+                continue
+
+            for task_type, task_name in enabled_tasks:
+                current = self.tasks[task_type][task_name]
+                if current["receive_queue"].empty():
+                    continue
+                logger.info("Getting out of queue")
+                packet = current["receive_queue"].get()
+                logger.debug(packet)
+                if packet is None:
+                    continue
+                logger.info("Getting destination")
+                destination = packet["destination"].split(".")
+                logger.info("Putting into queue")
+                self.tasks[destination[0]][destination[1]]["send_queue"].put(
+                    packet
+                )
+                logger.info("Done?")
 
 
     """The methods driver_manager() and process_manager() are very similar

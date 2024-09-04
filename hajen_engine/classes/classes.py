@@ -4,48 +4,65 @@ import json
 import logging
 import multiprocessing
 
+from queue import Empty
 from typing import Optional, Tuple, Generator
 from datetime import datetime
+from contextlib import contextmanager
 
 from asyncio import Task
 from hajen_engine.custom_types.task_tracker import Task as TaskType
 from hajen_engine.custom_types.task_tracker import RunningTasks
-from hajen_engine.custom_types.communication import PacketWithHeaders
 from hajen_engine.custom_types.communication import Packet
 
 
 # This needs some sort of lock on it to prevent deadlocks
-class QueueWrapper():
+# class QueueWrapper():
+    # def __init__(self):
+        # self.event = multiprocessing.Event()
+        # self.queue: multiprocessing.Queue[Packet] = multiprocessing.Queue()
+        # self.lock = multiprocessing.Lock()
+
+    # def put(self, item):
+        # with self.lock:
+            # self.queue.put(item)
+
+    # def get(self) -> Generator[Packet, None, bool]:
+        # with self.lock:
+            # queue = self.queue.get()
+            # yield queue
+            # return False
+
+    # def is_set(self):
+        # with self.lock:
+            # self.event.is_set()
+
+    # def set(self):
+        # with self.lock:
+            # self.event.set()
+
+    # def clear(self):
+        # with self.lock:
+            # self.event.clear()
+
+    # def empty(self):
+        # with self.lock:
+            # return self.queue.empty()
+
+class QueueWrapper:
     def __init__(self):
-        self.event = multiprocessing.Event()
-        self.queue: multiprocessing.Queue[PacketWithHeaders] = multiprocessing.Queue()
-        self.lock = multiprocessing.Lock()
+        self.queue: multiprocessing.Queue[Packet] = multiprocessing.Queue()
 
     def put(self, item):
-        with self.lock:
-            self.queue.put(item)
+        self.queue.put(item)
 
-    def get(self) -> Generator[PacketWithHeaders, None, bool]:
-        with self.lock:
-            queue = self.queue.get()
-            yield queue
-            return False
-
-    def is_set(self):
-        with self.lock:
-            self.event.is_set()
-
-    def set(self):
-        with self.lock:
-            self.event.set()
-
-    def clear(self):
-        with self.lock:
-            self.event.clear()
+    def get(self) -> Optional[Packet]:
+        try:
+            return self.queue.get(block=False)
+        except Empty:
+            return None
 
     def empty(self):
-        with self.lock:
-            return self.queue.empty()
+        return self.queue.empty()
 
 class TaskTracker():
     def __init__(self) -> None:
@@ -169,16 +186,11 @@ class BaseClass(TaskTracker):
         self.logger_queue: multiprocessing.Queue = multiprocessing.Queue()
 
     async def _read_queue(self,
-                          ) -> list[PacketWithHeaders]:
-        queue: list[PacketWithHeaders] = []
-        for queue_item in self.receive_queue.get():
-            match queue_item:
-                case False:
-                    queue.append(queue_item)
-                case True:
-                    return queue
-                case _:
-                    raise Exception(f'Unexpected error: {type(queue_item)}')
+                          ) -> list[Optional[Packet]]:
+        queue: list[Optional[Packet]] = []
+        while not self.receive_queue.empty():
+            queue_item = self.receive_queue.get()
+            queue.append(queue_item)
         return queue
 
     def get_queues(self,
@@ -234,10 +246,10 @@ class BaseClass(TaskTracker):
         )
 
     async def _send_packet_list(self
-                                ,packet_list: list[PacketWithHeaders]
+                                ,packet_list: list[Packet]
                                 ) -> dict[str, str]:
         """
-        Sends a list of PacketWithHeaders to self.send_queue.
+        Sends a list of Packet to self.send_queue.
         This keep _send_packet able to do only one packet at a time.
 
         `packet_list` - A list of packets to send to self.send_queue.
@@ -261,25 +273,23 @@ class BaseClass(TaskTracker):
         for packet in packet_list:
             try:
                 await self._send_packet(
-                    priority=packet[1],
-                    source=packet[2]['source'],
-                    job_id=packet[2]['job_id'],
-                    data=packet[2]['data'],
-                    destination=packet[0],
-                    result=packet[2]['result'],
-                    datatype=packet[2]['datatype'],
-                    requestid=packet[2]['requestid'],
+                    source=packet['source'],
+                    job_id=packet['job_id'],
+                    data=packet['data'],
+                    destination=packet['destination'],
+                    result=packet['result'],
+                    datatype=packet['datatype'],
+                    requestid=packet['requestid'],
                 )
             except (KeyError, IndexError, TypeError) as e:
                 return {
                 'result': '1',
-                'message': 'Packet is not of type list[PacketWithHeaders].',
+                'message': 'Packet is not of type list[Packet].',
                 'error': str(e),
                 }
         return {'result': '0'}
 
     async def _send_packet(self
-                           ,priority: int
                            ,source: str
                            ,job_id: str
                            ,data: dict
@@ -309,7 +319,7 @@ class BaseClass(TaskTracker):
             datatype=datatype,
             requestid=requestid,
         )
-        self.send_queue.put((destination, priority, json_data, ))
+        self.send_queue.put(json_data)
 
     async def schedule_task(self, data_packet) -> dict:
         raise NotImplementedError

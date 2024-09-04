@@ -8,5 +8,3 @@ class Packet(TypedDict, total=True):
     result: str
     datatype: str
     requestid: str
-
-PacketWithHeaders = tuple[str, int, Packet]
