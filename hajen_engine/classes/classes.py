@@ -6,7 +6,7 @@ import multiprocessing
 
 from queue import Empty
 from typing import Optional, Tuple, Generator
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import contextmanager
 
 from asyncio import Task
@@ -59,7 +59,7 @@ class TaskTracker():
                 for task in self.running_tasks
                 if self.running_tasks[task]["running"] == running
                 and key == task
-                and datetime.timestamp(datetime.utcnow())
+                and datetime.timestamp(datetime.now(tz=timezone.utc))
                 - self.running_tasks[task]["last_run"]
                 >= self.running_tasks[task]["cooldown"]
             }
@@ -68,7 +68,7 @@ class TaskTracker():
                 task: self.running_tasks[task]
                 for task in self.running_tasks
                 if self.running_tasks[task]["running"] == running
-                and datetime.timestamp(datetime.utcnow())
+                and datetime.timestamp(datetime.now(tz=timezone.utc))
                 - self.running_tasks[task]["last_run"]
                 >= self.running_tasks[task]["cooldown"]
             }
@@ -98,7 +98,7 @@ class TaskTracker():
             self.running_tasks[key].update(
                 {
                     "running": running,
-                    "last_run": datetime.timestamp(datetime.utcnow())
+                    "last_run": datetime.timestamp(datetime.now(tz=timezone.utc))
                     if update_last_run
                     else self.running_tasks[key]["last_run"],
                     "cooldown": cooldown if update_cooldown
@@ -111,10 +111,10 @@ class TaskTracker():
         else:
             self.running_tasks[key] = {
                 "running": running,
-                "last_run": datetime.timestamp(datetime.utcnow())
+                "last_run": datetime.timestamp(datetime.now(tz=timezone.utc))
                 if update_last_run
                 else datetime.timestamp(
-                    datetime.utcnow()) - ((cooldown)),
+                    datetime.now(tz=timezone.utc)) - ((cooldown)),
                 "cooldown": cooldown,
                 "task": task if task is not None
                 else None,
@@ -212,7 +212,7 @@ class BaseClass(TaskTracker):
         core.
         `uid` - A unique number that increments for each call to get_request_id
         for each instance.
-        `timestamp` - UNIX Epoch time, using `utcnow()``utcnow` converted to
+        `timestamp` - UNIX Epoch time, using `now(tz=timezone.utc)``utcnow` converted to
         milliseconds to help with the uniqueness of the `get_request_id`.
         """
         self.uid += 1
@@ -220,7 +220,7 @@ class BaseClass(TaskTracker):
             class_type=self.class_type,
             process_name=process_name,
             uid=self.uid,
-            timestamp=int(datetime.utcnow().timestamp() * 1000),
+            timestamp=int(datetime.now(tz=timezone.utc).timestamp() * 1000),
         )
 
     async def _send_packet_list(self
