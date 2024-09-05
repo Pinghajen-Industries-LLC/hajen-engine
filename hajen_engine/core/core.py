@@ -167,13 +167,31 @@ class Core:
             ) -> None:
         logger.info("Starting run_low_priority_manager")
         asyncio.run(
-                    self.low_priority_manager(
-                        logger=logger,
-                        receive_queue=receive_queue,
-                        send_queue=send_queue,
-                        low_priority_setup_queue=low_priority_setup_queue,
-                        )
-                    )
+            self.async_run(
+                logger,
+                receive_queue=receive_queue,
+                send_queue=send_queue,
+                low_priority_setup_queue=low_priority_setup_queue,
+                )
+            )
+
+    async def async_run(
+            self,
+            logger: logging.Logger,
+            receive_queue: multiprocessing.Queue,
+            send_queue: multiprocessing.Queue,
+            low_priority_setup_queue: multiprocessing.Queue,
+            ):
+        task_logger.create_task(
+            self.low_priority_manager(
+                logger=logger,
+                receive_queue=receive_queue,
+                send_queue=send_queue,
+                low_priority_setup_queue=low_priority_setup_queue,
+                ),
+            logger=logger,
+            message="Task raised an exception",
+            )
 
     async def low_priority_manager(
             self,

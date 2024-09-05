@@ -10,6 +10,7 @@ from datetime import datetime
 from contextlib import contextmanager
 
 from asyncio import Task
+from asyncio_task_logger import task_logger
 from hajen_engine.custom_types.task_tracker import Task as TaskType
 from hajen_engine.custom_types.task_tracker import RunningTasks
 from hajen_engine.custom_types.communication import Packet
@@ -178,8 +179,18 @@ class BaseClass(TaskTracker):
             ) -> None:
         self.logger_queue.put((level.upper(), f'{self.source}:{message}'))
 
+    async def async_run(
+            self,
+            ) -> None:
+        logger = logging.getLogger(__name__)
+        result = task_logger.create_task(
+                self.run(),
+                logger=logger,
+                message="Task raised an exception"
+                )
+
     def main(self) -> None:
-        asyncio.run(self.run(), debug=True)
+        asyncio.run(self.async_run(), debug=True)
 
     async def run(self) -> None:
         print("The task needs to impliment run()")

@@ -9,6 +9,7 @@ import sys
 # import pstats
 
 from logging.handlers import RotatingFileHandler
+from asyncio_task_logger import task_logger
 from hajen_engine.core.core import Core
 from hajen_engine.custom_types.core import EnvData
 
@@ -64,7 +65,11 @@ async def async_run():
 
     # catches for a keyboard interrupt, will want to add more ways
     # to cancel in the future.
-    await core.main()
+    result = task_logger.create_task(
+            core.main(),
+            logger=logger,
+            message="Task raised an exception"
+            )
 
 def run():
     """
