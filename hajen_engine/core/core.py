@@ -26,11 +26,7 @@ class Core:
 
         # Dictionaries holding the human readable names, futures, and any
         # other userful information for the different components
-        self.tasks: dict[str, dict[str, Any]] = {
-                                        "drivers": {},
-                                        "processes": {},
-                                        "core": {},
-                                        }
+        self.tasks: dict[str, dict] = {}
 
         with open("data/environment.json", "r") as json_file:
             self.env = load(json_file)
@@ -41,7 +37,7 @@ class Core:
         self.env_data: EnvData = env_data
 
         self.logger: multiprocessing.Queue[tuple[str, str]] = multiprocessing.Queue()
-        self.low_priority_setup_queue: multiprocessing.Queue[tuple[Literal['SETUP'], tuple[str, str]]] = multiprocessing.Queue()
+        self.low_priority_setup_queue: multiprocessing.Queue[tuple[Literal['SETUP'], str]] = multiprocessing.Queue()
 
         self.low_priority_receive_queue: multiprocessing.Queue[Packet] = multiprocessing.Queue()
         self.low_priority_send_queue: multiprocessing.Queue[Packet] = multiprocessing.Queue()
@@ -80,77 +76,73 @@ class Core:
                 )
         low_priority_manager.start()
         self.manager = multiprocessing.Manager()
-        for task_type in self.env_data["tasks"]:
-            logger.debug(f"{task_type}")
-            for task in self.env_data["tasks"][task_type]:
-                logger.debug(f"{task}")
-                # Checks if the task isenabled and not already initialized
-                if (
-                        self.env_data["tasks"][task_type][task]['enabled']
-                        and task not in self.tasks[task_type].keys()
-                    ):
-                    if self.env_data['tasks'][task_type][task]['high_priority']:
-                        temp_object, receive_queue, send_queue = self.setup_object(
-                                manager_type=task_type,
-                                object_name=task,
-                                )
-                        logger.info("Setting up high priority tasks")
-                        try:
-                            temp_process = multiprocessing.Process(target=temp_object.main, name=task)
-                            temp_process.start()
-                            self.tasks[task_type][task] = {
-                                "send_queue": send_queue,
-                                "receive_queue": receive_queue,
-                                "object": temp_object,
-                                "enabled": True,
-                                "process": temp_process,
-                            }
-                        except Exception as e:
-                            logger.debug(e)
-                    else:
-                        logger.info("Setting up low priority tasks")
-                        self.tasks[task_type][task] = {
-                                "send_queue": self.low_priority_send_queue,
-                                "receive_queue": self.low_priority_receive_queue,
-                                "object": None,
-                                "enabled": True,
-                                "process": low_priority_manager,
-                                }
-                        packet: tuple[Literal['SETUP'], tuple[str, str]] = ("SETUP", (task_type, task))
-                        self.low_priority_setup_queue.put(packet)
-                # Marking as NotImplemented for now until this functionality gets fixed as it hasn't really worked properly or was really used
-                elif (
-                    self.env_data["tasks"][task_type][task]
-                    and task in self.tasks[task_type].keys()
-                    and not self.tasks[task_type][task]["enabled"]
+        for task in self.env_data["tasks"]:
+            logger.debug(f"{task}")
+            # Checks if the task isenabled and not already initialized
+            if (
+                    self.env_data["tasks"][task]['enabled']
+                    and task not in self.tasks.keys()
                 ):
-                    raise NotImplemented
-                # temp_future = Worker(target=temp_object.main())
-                    logger.info("Starting {}.{}".format(task_type, task))
-                    self.tasks[task_type][task]["enabled"] = True
-                    temp_future = task_logger.create_task(
-                        temp_object.main(),
-                        logger=logger,
-                        message="Task raised an exception",
-                    )
-                # Marking as NotImplemented for now until this functionality gets fixed as it hasn't really worked properly or was rarely used
-                elif not self.env_data["tasks"][task_type][task] and task in self.tasks[task_type].keys():
-                    raise NotImplemented
-                    logger.info("Canceling {}.{}".format(task_type, task))
-                    self.tasks[task_type][task]["enabled"] = False
-                    self.tasks[task_type][task]["future"].cancel()
+                if self.env_data['tasks'][task]['high_priority']:
+                    temp_object, receive_queue, send_queue = self.setup_object(
+                            object_name=task,
+                            )
+                    logger.info("Setting up high priority tasks")
+                    try:
+                        temp_process = multiprocessing.Process(target=temp_object.main, name=task)
+                        temp_process.start()
+                        self.tasks[task] = {
+                            "send_queue": send_queue,
+                            "receive_queue": receive_queue,
+                            "object": temp_object,
+                            "enabled": True,
+                            "process": temp_process,
+                        }
+                    except Exception as e:
+                        logger.debug(e)
+                else:
+                    logger.info("Setting up low priority tasks")
+                    self.tasks[task] = {
+                            "send_queue": self.low_priority_send_queue,
+                            "receive_queue": self.low_priority_receive_queue,
+                            "object": None,
+                            "enabled": True,
+                            "process": low_priority_manager,
+                            }
+                    packet: tuple[Literal['SETUP'], str] = ("SETUP", task)
+                    self.low_priority_setup_queue.put(packet)
+            # Marking as NotImplemented for now until this functionality gets fixed as it hasn't really worked properly or was really used
+            # elif (
+                # self.env_data["tasks"][task]
+                # and task in self.tasks.keys()
+                # and not self.tasks[task]["enabled"]
+            # ):
+                # raise NotImplemented
+            # temp_future = Worker(target=temp_object.main())
+                # logger.info("Starting tasks.{}".format(task))
+                # self.tasks[task]["enabled"] = True
+                # temp_future = task_logger.create_task(
+                    # temp_object.main(),
+                    # logger=logger,
+                    # message="Task raised an exception",
+                # )
+            # Marking as NotImplemented for now until this functionality gets fixed as it hasn't really worked properly or was rarely used
+            # elif not self.env_data["tasks"][task] and task in self.tasks.keys():
+                # raise NotImplemented
+                # logger.info("Canceling {}.{}".format(, task))
+                # self.tasks[task]["enabled"] = False
+                # self.tasks[task]["future"].cancel()
         logger.info("Managers finished running")
 
         await self._read_queue()
 
     def setup_object(
             self,
-            manager_type,
             object_name,
             ):
-        logger.info(f"Setting up and starting {manager_type}.{object_name}")
+        logger.info(f"Setting up and starting task.{object_name}")
         temp_module = importlib.import_module(
-            f"src.{manager_type}.{object_name}.main"
+            f"src.tasks.{object_name}.main"
         )
         # This backwards looking naming is intentional since it's named is based on the perpective of the process
         temp_object = temp_module.Main(self.env_data)
@@ -266,18 +258,17 @@ class Core:
     async def _read_queue(self) -> None:
         while True:
             enabled_tasks = [
-                (t, i)
-                for t in self.tasks.keys()
-                for i in self.tasks[t]
-                if self.tasks[t][i]["enabled"]
+                i
+                for i in self.tasks.keys()
+                if self.tasks[i]["enabled"]
             ]
 
             if not enabled_tasks:
                 await asyncio.sleep(0.1)
                 continue
 
-            for task_type, task_name in enabled_tasks:
-                current = self.tasks[task_type][task_name]
+            for task in enabled_tasks:
+                current = self.tasks[task]
                 if current["receive_queue"].empty():
                     continue
                 logger.debug("Getting out of queue")
@@ -287,7 +278,7 @@ class Core:
                 destination = packet["destination"].split(".")
                 logger.debug("Putting into queue")
                 # TODO: add a check for if a task is disabled
-                self.tasks[destination[0]][destination[1]]["send_queue"].put(
+                self.tasks[destination[1]]["send_queue"].put(
                     packet
                 )
                 logger.debug("Done?")
