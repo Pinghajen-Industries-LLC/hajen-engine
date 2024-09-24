@@ -134,7 +134,7 @@ class TaskTracker():
                 int(json.loads(data_packet[2]))["scheduled_task"]["interval"]
             )
 
-class BaseClass(TaskTracker):
+class TaskClass(TaskTracker):
     def __init__(self) -> None:
         super().__init__()
 

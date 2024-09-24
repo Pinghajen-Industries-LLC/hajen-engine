@@ -11,7 +11,7 @@ import sys
 from logging.handlers import RotatingFileHandler
 from asyncio_task_logger import task_logger
 from hajen_engine.core.core import Core
-from hajen_engine.custom_types.core import EnvData
+from hajen_engine.types.shared import EnvData
 
 global __version__
 __version__ = "engine-0.0.2b1"
@@ -61,7 +61,7 @@ async def async_run():
         f"Engine running on version: {__version__}"
     )
 
-    core: Core = Core(env_data)
+    core: Core = Core()
 
     # catches for a keyboard interrupt, will want to add more ways
     # to cancel in the future.
@@ -71,7 +71,8 @@ async def async_run():
             message="Task raised an exception"
             )
 
-def run():
+
+def run() -> None:
     """
     Main entry point for the engine.
     """
