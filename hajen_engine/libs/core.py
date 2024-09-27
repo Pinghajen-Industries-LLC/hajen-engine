@@ -1,5 +1,8 @@
 import multiprocessing
-from typing import Dict, Optional
+from copy import deepcopy
+import psutil
+import os
+from typing import Dict, Optional, List, Tuple
 from datetime import datetime, timezone
 from json import load
 import logging
@@ -17,25 +20,33 @@ logger = logging.getLogger(__name__)
 
 
 class TaskManager:
-    def __init__(self):
-        with open("data/environment.json", "r") as json_file:
-            self.env_data: EnvData = load(json_file)
+    def __init__(self, env_data: EnvData):
+        self.env_data = env_data
 
         self.receive_queue: QueueWrapper = QueueWrapper()
+        self.send_queue: QueueWrapper = QueueWrapper()
+        self.used_cores: List[Tuple[str, int]] = []
         self.tasks: Dict[str, RunningTasks] = {}
+        self.last_process_number: int = 0
 
-    async def manager(self):
+        # Takes the env_data variable and creates a dictionary of tasks
+        # this allows for scoped task lists for different low priority tasks
+        # for task in env_data['tasks'].keys():
+            # self.tasks.update({task: RunningTasks})
+
+    async def manager(self, name):
         """
         Starts and stops processes
         """
+        self.used_cores.append((name, psutil.Process(os.getpid()).cpu_num()))
         result = task_logger.create_task(
                 self.read_queue(),
                 logger=logger,
                 message="Task raised an exception"
                 )
         while True:
-            with open("data/environment.json", "r") as json_file:
-                self.env_data: EnvData = load(json_file)
+            # with open("data/environment.json", "r") as json_file:
+                # self.env_data: EnvData = load(json_file)
             logger.debug("1234")
 
             for task in self.env_data['tasks'].keys():
@@ -45,36 +56,88 @@ class TaskManager:
                     await self.start(task)
             await asyncio.sleep(60)
 
+    def _update_used_cores(self, task: str, core: int):
+        self.used_cores.append((task, core))
+        self.last_process_number += 1
+
     async def start(self, task):
         logger.debug(task)
-        if self.env_data['tasks'][task]['high_priority']:
+        if self.env_data['tasks'][task]['high_priority'] and task not in [name[0] for name in self.used_cores]:
             temp_object, send_queue = self.setup_object(
                     object_name=task,
                     )
             logger.info("Setting up high priority tasks")
             temp_process = multiprocessing.Process(
                     target=temp_object.main,
-                    name=task
+                    name=task,
                     )
             temp_process.start()
+            process = psutil.Process(temp_process.pid)
+            # logger.debug(process.cpu_num())
             self.tasks.update({
                 task: {
                     'name': task,
                     "send_queue": send_queue,
                     "receive_queue": self.receive_queue,
-                    'core': 1,
+                    'async_core': process.cpu_num(),
                     "enabled": True,
                     "process": temp_process,
                     }
                 })
+            self._update_used_cores(task, process.cpu_num())
         if not self.env_data['tasks'][task]['high_priority']:
-            pass
+            if (
+                    'lp' + str(self.env_data['tasks'][task]['async_core']) in
+                    [names[0] for names in self.used_cores]
+                    ):
+                # this will add the task to the async process already running
+                pass
+            else:
+                logger.info("Setting up low priority tasks")
+                # This is a weird way of creating a copy of env_data
+                # with only the task we want to run in it
+                # but it works I guess ¯\_(ツ)_/¯
+                env_copy = deepcopy(self.env_data)
+                task_copy = deepcopy(self.env_data['tasks'][task])
+                env_copy['tasks'] = {task: task_copy}
+                temp_object, send_queue = self.setup_object(
+                        object_name=task,
+                        )
+                async_process = TaskManager(env_copy)
+                send_queue = await async_process.get_send_queue()
+                temp_process = multiprocessing.Process(
+                        target=async_process.run_async,
+                        args=(temp_object,),
+                        name=task,
+                        )
+                temp_process.start()
+                self.tasks.update({
+                    task: {
+                        'name': task,
+                        "send_queue": send_queue,
+                        "receive_queue": self.receive_queue,
+                        'async_core': self.env_data['tasks'][task]['async_core'],
+                        "enabled": True,
+                        "process": temp_process,
+                        }
+                    })
+                self._update_used_cores('lp' + str(self.env_data['tasks'][task]['async_core']), self.env_data['tasks'][task]['async_core'])
 
     async def restart(self, task):
         pass
 
     async def shutdown(self, task):
         pass
+
+    def run_async(self, task):
+        try:
+            asyncio.get_running_loop()
+            asyncio.create_task(task.run())
+        except RuntimeError:
+            asyncio.run(task.run())
+
+    async def get_send_queue(self):
+        return self.send_queue
 
     async def read_queue(self):
         while True:

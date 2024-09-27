@@ -29,7 +29,7 @@ class Core:
                 Packet
                  ] = multiprocessing.Queue()
 
-        self.root_manager: TaskManager = TaskManager()
+        self.root_manager: TaskManager = TaskManager(self.env_data)
 
         self.core_count = multiprocessing.cpu_count()
         # Gives the OS, distro, version, and architecture
@@ -47,4 +47,4 @@ class Core:
         Main loop for the core
         """
         while True:
-            await self.root_manager.manager()
+            await self.root_manager.manager('root')
