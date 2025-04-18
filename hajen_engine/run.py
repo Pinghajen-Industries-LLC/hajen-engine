@@ -49,7 +49,7 @@ def setup_logging(env_data):
         module_logger.setLevel(getattr(logging, env_data["library_logging_levels"][module]))
 
 
-async def async_run():
+async def _async_run():
 
     with open("data/environment.json", "r") as file:
         env_data: EnvData = json.load(file)
@@ -78,9 +78,12 @@ def run() -> None:
     """
     try:
         asyncio.get_running_loop()
-        asyncio.create_task(async_run())
+        asyncio.create_task(_async_run())
     except RuntimeError:
-        asyncio.run(async_run())
+        # TODO: Add uvloop support
+        # uvloop.install()
+        asyncio.run(_async_run())
+    # TODO: add better program quitting
 
 # if __name__ == "__main__":
     # try:
