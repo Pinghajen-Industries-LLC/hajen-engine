@@ -1,9 +1,13 @@
 import asyncio
+import atexit
 import datetime
 import json
 import logging
 import uvloop
+import struct
 import sys
+
+from multiprocessing import shared_memory
 
 # import cProfile
 # import pstats
@@ -11,14 +15,31 @@ import sys
 from logging.handlers import RotatingFileHandler
 from asyncio_task_logger import task_logger
 from hajen_engine.core.core import Core
+from hajen_engine.libs.utils import get_env_data
 from hajen_engine.types.shared import EnvData
 
 global __version__
-__version__ = "engine-0.0.2b1"
+__version__ = "engine-0.0.3b1"
 
+with open("data/environment.json", "r") as file:
+    env_data: EnvData = json.load(file)
 
-# with open("data/environment.json", "r") as file:
-    # env_data: EnvData = json.load(file)
+env_data_bytes = json.dumps(env_data).encode('utf-8')
+size = len(env_data_bytes) + 8
+shm = shared_memory.SharedMemory(create=True, size=size, name='env_data')
+size_bytes = struct.pack('Q', size)
+shm.buf[:8] = size_bytes
+shm.buf[8:8 + len(env_data_bytes)] = env_data_bytes
+
+def cleanup_shared_memory():
+    try:
+        shm.close()
+        shm.unlink()
+        print("Shared memory cleaned up")
+    except Exception as e:
+        print(f"Error cleaning up shared memory: {e}")
+
+atexit.register(cleanup_shared_memory)
 
 def handle_exception(exc_type, exc_value, exc_traceback):
     logger = logging.getLogger(__name__)
@@ -50,9 +71,7 @@ def setup_logging(env_data):
 
 
 async def _async_run():
-
-    with open("data/environment.json", "r") as file:
-        env_data: EnvData = json.load(file)
+    env_data = await get_env_data()
 
     setup_logging(env_data)
     sys.excepthook = handle_exception
@@ -77,13 +96,16 @@ def run() -> None:
     Main entry point for the engine.
     """
     try:
-        asyncio.get_running_loop()
-        asyncio.create_task(_async_run())
-    except RuntimeError:
-        # TODO: Add uvloop support
-        # uvloop.install()
-        asyncio.run(_async_run())
+        try:
+            asyncio.get_running_loop()
+            asyncio.create_task(_async_run())
+        except RuntimeError:
+            # TODO: Add uvloop support
+            # uvloop.install()
+            asyncio.run(_async_run()) # TODO: add debug parameter
     # TODO: add better program quitting
+    except KeyboardInterrupt:
+        quit()
 
 # if __name__ == "__main__":
     # try:
