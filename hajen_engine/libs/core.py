@@ -25,7 +25,7 @@ class TaskManager:
 
         self.receive_queue: QueueWrapper = QueueWrapper()
         self.send_queue: QueueWrapper = QueueWrapper()
-        self.used_cores: List[Tuple[str, int]] = []
+        self.used_cores: List[Tuple[str, int, multiprocessing.Queue[EnvData]]] = []
         self.tasks: Dict[str, RunningTasks] = {}
         self.last_process_number: int = 0
 
@@ -38,7 +38,7 @@ class TaskManager:
         """
         Starts and stops processes
         """
-        self.used_cores.append((name, psutil.Process(os.getpid()).cpu_num()))
+        self._update_used_cores(name, psutil.Process(os.getpid()).cpu_num(), multiprocessing.Queue())
         result = task_logger.create_task(
                 self.read_queue(),
                 logger=logger,
@@ -49,6 +49,12 @@ class TaskManager:
                 # self.env_data: EnvData = load(json_file)
             logger.debug("1234")
 
+            for name in self.used_cores:
+                while not name[2].empty():
+                    env_data = name[2].get()
+                    for task in env_data['tasks'].keys():
+                        self.env_data['tasks'][task] = env_data['tasks'][task]
+
             for task in self.env_data['tasks'].keys():
                 if task in self.tasks.keys():
                     continue
@@ -56,8 +62,8 @@ class TaskManager:
                     await self.start(task)
             await asyncio.sleep(60)
 
-    def _update_used_cores(self, task: str, core: int):
-        self.used_cores.append((task, core))
+    def _update_used_cores(self, task: str, core: int, queue: multiprocessing.Queue[EnvData]):
+        self.used_cores.append((task, core, queue))
         self.last_process_number += 1
 
     async def start(self, task):
@@ -84,13 +90,16 @@ class TaskManager:
                     "process": temp_process,
                     }
                 })
-            self._update_used_cores(task, process.cpu_num())
+            self._update_used_cores(task, process.cpu_num(), multiprocessing.Queue())
         if not self.env_data['tasks'][task]['high_priority']:
             if (
                     'lp' + str(self.env_data['tasks'][task]['async_core']) in
                     [names[0] for names in self.used_cores]
                     ):
                 # this will add the task to the async process already running
+                for name in self.used_cores:
+                    if name[0] == task:
+                        name[2].put(task)
                 pass
             else:
                 logger.info("Setting up low priority tasks")
