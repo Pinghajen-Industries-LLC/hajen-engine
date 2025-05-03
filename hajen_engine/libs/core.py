@@ -10,8 +10,10 @@ from asyncio import Task
 
 import asyncio
 import importlib
-from asyncio_task_logger import task_logger
+
+from hajen_engine.libs.utils import create_task, get_env_data
 from hajen_engine.types.shared import EnvData, RunningTasks
+from hajen_engine.types.core import Task
 from hajen_engine.types.task_tracker import JobList
 from hajen_engine.types.communication import Packet
 from hajen_engine.libs.communication import QueueWrapper
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class TaskManager:
-    def __init__(self, env_data: EnvData):
+    def __init__(self):
         """
         This class manages each task in a uniform way.
         - self.env_data - From the `data/environment.json` file
@@ -30,28 +32,30 @@ class TaskManager:
         - self.tasks - List of all running tasks from this TaskManager
         - self.last_process_number - Tracks the last process number used
         """
-        self.env_data = env_data
+        self.env_data: EnvData = get_env_data()
 
         self.receive_queue: QueueWrapper = QueueWrapper()
         self.send_queue: QueueWrapper = QueueWrapper()
         self.used_cores: List[Tuple[str, int, multiprocessing.Queue[EnvData]]] = []
-        self.tasks: Dict[str, RunningTasks] = {}
+        self.tasks: Dict[str, Task] = {}
         self.last_process_number: int = 0
 
         # Takes the env_data variable and creates a dictionary of tasks
         # this allows for scoped task lists for different low priority tasks
-        # for task in env_data['tasks'].keys():
-            # self.tasks.update({task: RunningTasks})
+        # This might be unnecessary
+        for task in self.env_data['tasks'].keys():
+            self.tasks.update({
+                task: self.env_data['tasks'][task]
+            })
 
     async def manager(self, name: str):
         """
         Starts and stops processes
         """
         self._update_used_cores(name, psutil.Process(os.getpid()).cpu_num(), multiprocessing.Queue())
-        result = task_logger.create_task(
+        result = create_task(
                 self.read_queue(),
-                logger=logger,
-                message="Task raised an exception"
+                name=f"{name}_read_queue",
                 )
         # TODO: Remove the while True and use a callback
         while True:
@@ -75,7 +79,7 @@ class TaskManager:
                     await self.start(task)
             await asyncio.sleep(60)
 
-    def _update_used_cores(self, task: str, core: int, queue: multiprocessing.Queue[EnvData]):
+    def _update_used_cores(self, task: str, core: int, queue):
         """
         Updates self.used_cores and increments self.last_process_number
         This is supposed to keep track of the used cores by the root TaskTracker
@@ -294,7 +298,7 @@ class TaskClass:
             self,
             ) -> None:
         logger = logging.getLogger(__name__)
-        result = task_logger.create_task(
+        result = create_task(
                 self.run(),
                 logger=logger,
                 message="Task raised an exception"
@@ -461,7 +465,6 @@ class JobTracker:
                 - self.running_tasks[task]["last_run"]
                 >= self.running_tasks[task]["cooldown"]
             }
-        return self.running_tasks
 
     def set_task_callback(
         self,
@@ -477,7 +480,6 @@ class JobTracker:
         key: str,
         running: bool = True,
         cooldown: float = 60.0,
-        # task: asyncio.Task = asyncio.create_task(asyncio.sleep(0)),
         task: Optional[asyncio.Task] = None,
         update_last_run: bool = False,
         update_cooldown: bool = False,
@@ -512,18 +514,3 @@ class JobTracker:
                 else None,
             }
             return None
-
-    async def _run_scheduled_task(
-            self,
-            data_packet
-            ) -> None:
-        raise DeprecationWarning
-        while not asyncio.current_task().cancelled():
-            self.receive_queue.put(data_packet)
-            if not self.receive_event.is_set():
-                self.receive_event.set()
-            await asyncio.sleep(
-                int(json.loads(data_packet[2]))["scheduled_task"]["interval"]
-            )
-
-

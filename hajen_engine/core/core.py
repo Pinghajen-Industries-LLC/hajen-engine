@@ -2,9 +2,7 @@ import logging
 import multiprocessing
 import platform
 
-from json import load
 from hajen_engine.types.communication import Packet
-from hajen_engine.types.shared import EnvData
 from hajen_engine.libs.core import TaskManager
 
 
@@ -19,8 +17,6 @@ class Core:
         # other userful information for the different components
         self.tasks: dict[str, dict] = {}
 
-        with open("data/environment.json", "r") as json_file:
-            self.env_data: EnvData = load(json_file)
 
         # Added it to self so other processes could have access if needed
         # Should eventually be moved over to a non-blocking file read but the
@@ -29,7 +25,7 @@ class Core:
                 Packet
                  ] = multiprocessing.Queue()
 
-        self.root_manager: TaskManager = TaskManager(self.env_data)
+        self.root_manager: TaskManager = TaskManager()
 
         self.core_count = multiprocessing.cpu_count()
         # Gives the OS, distro, version, and architecture

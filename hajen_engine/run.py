@@ -13,9 +13,8 @@ from multiprocessing import shared_memory
 # import pstats
 
 from logging.handlers import RotatingFileHandler
-from asyncio_task_logger import task_logger
 from hajen_engine.core.core import Core
-from hajen_engine.libs.utils import get_env_data
+from hajen_engine.libs.utils import create_task, get_env_data
 from hajen_engine.types.shared import EnvData
 
 global __version__
@@ -32,12 +31,13 @@ shm.buf[:8] = size_bytes
 shm.buf[8:8 + len(env_data_bytes)] = env_data_bytes
 
 def cleanup_shared_memory():
+    logger = logging.getLogger(__name__)
     try:
         shm.close()
         shm.unlink()
-        print("Shared memory cleaned up")
+        logger.info("Shared memory cleaned up")
     except Exception as e:
-        print(f"Error cleaning up shared memory: {e}")
+        logger.error(f"Error cleaning up shared memory: {e}")
 
 atexit.register(cleanup_shared_memory)
 
@@ -56,14 +56,13 @@ def setup_logging(env_data):
         handlers=[
             RotatingFileHandler(
                 f'logs/log-{datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")}.txt',
-                maxBytes=2000000000,
+                maxBytes=2_000_000_000,
                 backupCount=5,
             ),
             logging.StreamHandler(stream=sys.stdout),
         ],
         format="%(levelname)s:%(name)s:%(lineno)s:%(message)s",
     )
-    logger = logging.getLogger(__name__)
     logging.raiseExceptions = True
     for module in env_data["library_logging_levels"].keys():
         module_logger = logging.getLogger(module)
@@ -71,7 +70,7 @@ def setup_logging(env_data):
 
 
 async def _async_run():
-    env_data = await get_env_data()
+    env_data = get_env_data()
 
     setup_logging(env_data)
     sys.excepthook = handle_exception
@@ -82,12 +81,9 @@ async def _async_run():
 
     core: Core = Core()
 
-    # catches for a keyboard interrupt, will want to add more ways
-    # to cancel in the future.
-    result = task_logger.create_task(
-            core.main(),
-            logger=logger,
-            message="Task raised an exception"
+    result = create_task(
+            coroutine=core.main(),
+            name='root',
             )
 
 
