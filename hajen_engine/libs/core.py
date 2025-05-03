@@ -21,6 +21,15 @@ logger = logging.getLogger(__name__)
 
 class TaskManager:
     def __init__(self, env_data: EnvData):
+        """
+        This class manages each task in a uniform way.
+        - self.env_data - From the `data/environment.json` file
+        - self.receive_queue - Queue for this task to receive from
+        - self.send_queue - Queue for this task to send on
+        - self.used_cores - The currently used cores by this task
+        - self.tasks - List of all running tasks from this TaskManager
+        - self.last_process_number - Tracks the last process number used
+        """
         self.env_data = env_data
 
         self.receive_queue: QueueWrapper = QueueWrapper()
@@ -34,7 +43,7 @@ class TaskManager:
         # for task in env_data['tasks'].keys():
             # self.tasks.update({task: RunningTasks})
 
-    async def manager(self, name):
+    async def manager(self, name: str):
         """
         Starts and stops processes
         """
@@ -44,17 +53,21 @@ class TaskManager:
                 logger=logger,
                 message="Task raised an exception"
                 )
+        # TODO: Remove the while True and use a callback
         while True:
             # with open("data/environment.json", "r") as json_file:
                 # self.env_data: EnvData = load(json_file)
             logger.debug("1234")
 
-            for name in self.used_cores:
-                while not name[2].empty():
-                    env_data = name[2].get()
+            # I'm not sure what this code does, it appears to be for updating the env_data variable
+            for task_name in self.used_cores:
+                while not task_name[2].empty():
+                    env_data = task_name[2].get()
                     for task in env_data['tasks'].keys():
                         self.env_data['tasks'][task] = env_data['tasks'][task]
 
+            # Starts a new task
+            # TODO: Should handle shutting down tasks as well
             for task in self.env_data['tasks'].keys():
                 if task in self.tasks.keys():
                     continue
@@ -63,16 +76,27 @@ class TaskManager:
             await asyncio.sleep(60)
 
     def _update_used_cores(self, task: str, core: int, queue: multiprocessing.Queue[EnvData]):
+        """
+        Updates self.used_cores and increments self.last_process_number
+        This is supposed to keep track of the used cores by the root TaskTracker
+        """
         self.used_cores.append((task, core, queue))
         self.last_process_number += 1
 
     async def start(self, task):
+        """
+        Starts a process regardless of if it's high priority or low priority
+        """
         logger.debug(task)
+        # Checks if it's marked as high priority and if it's already running
+        # TODO: Change this to remove currently running tasks and where they are
         if self.env_data['tasks'][task]['high_priority'] and task not in [name[0] for name in self.used_cores]:
             temp_object, send_queue = self.setup_object(
                     object_name=task,
                     )
             logger.info("Setting up high priority tasks")
+            # This needs to allow setting to a certain core
+            # as this might require manual core assignment
             temp_process = multiprocessing.Process(
                     target=temp_object.main,
                     name=task,
@@ -91,6 +115,10 @@ class TaskManager:
                     }
                 })
             self._update_used_cores(task, process.cpu_num(), multiprocessing.Queue())
+        # This should also check if the process is already started, probably
+        # There needs to be a way to keep track of which core is dedicated to
+        # being high priority and which can share cores and which cores
+        # to share, this should be configurable
         if not self.env_data['tasks'][task]['high_priority']:
             if (
                     'lp' + str(self.env_data['tasks'][task]['async_core']) in
@@ -106,6 +134,7 @@ class TaskManager:
                 # This is a weird way of creating a copy of env_data
                 # with only the task we want to run in it
                 # but it works I guess ¯\_(ツ)_/¯
+                # WHY DID I EVEN DO THIS?
                 env_copy = deepcopy(self.env_data)
                 task_copy = deepcopy(self.env_data['tasks'][task])
                 env_copy['tasks'] = {task: task_copy}
@@ -130,15 +159,27 @@ class TaskManager:
                         "process": temp_process,
                         }
                     })
+                # TODO Add queue parameter to this function call
                 self._update_used_cores('lp' + str(self.env_data['tasks'][task]['async_core']), self.env_data['tasks'][task]['async_core'])
 
     async def restart(self, task):
+        """
+        This should kill and start the process again, reevaluating the setup settings
+        Should also have a force option and a graceful shutdown option
+        """
         pass
 
     async def shutdown(self, task):
+        """
+        This should kill the process
+        Should also have a force option and a graceful shutdown option
+        """
         pass
 
     def run_async(self, task):
+        """
+        This should either create the task or start an event loop
+        """
         try:
             asyncio.get_running_loop()
             asyncio.create_task(task.run())
@@ -146,9 +187,15 @@ class TaskManager:
             asyncio.run(task.run())
 
     async def get_send_queue(self):
+        """
+        Simply returns the send queue of this process' core
+        """
         return self.send_queue
 
     async def read_queue(self):
+        """
+        Standard way to read from any supported queue and then send on any supported queue
+        """
         while True:
             enabled_tasks = [
                 i
@@ -182,6 +229,10 @@ class TaskManager:
             self,
             object_name: str,
             ):
+        """
+        Builds the object to be used, ideally this should be contained within the TaskClass
+        TODO: Impliment this into the TaskClass
+        """
         logger.info(f"Setting up and starting task.{object_name}")
         temp_module = importlib.import_module(
             f"src.{object_name}.main"
@@ -432,6 +483,9 @@ class JobTracker:
         update_cooldown: bool = False,
         update_task: bool = False,
     ) -> None:
+        """
+        This needs to update the task or set it running if it's not already set
+        """
         if key in self.running_tasks.keys():
             self.running_tasks[key].update(
                 {

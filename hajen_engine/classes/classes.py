@@ -1,3 +1,4 @@
+# TODO: check to see if this file should be deleted
 import asyncio
 import functools
 import json
@@ -16,6 +17,11 @@ from hajen_engine.custom_types.task_tracker import RunningTasks
 from hajen_engine.custom_types.communication import Packet
 
 class QueueWrapper:
+    """
+    TODO: Make this atomic
+
+    Standardized queue
+    """
     def __init__(self):
         self.queue: multiprocessing.Queue[Packet] = multiprocessing.Queue()
 
@@ -32,6 +38,9 @@ class QueueWrapper:
         return self.queue.empty()
 
 class TaskTracker():
+    """
+    TODO: This class should have a `delete_task()` method added
+    """
     def __init__(self) -> None:
         # self.running_tasks: dict[str, TaskType] = dict()
         self.running_tasks: RunningTasks = RunningTasks()
@@ -43,6 +52,10 @@ class TaskTracker():
             delete: bool = False,
             force: bool = False
             ) -> None:
+        """
+        Stops a task, this might not be different than stopping a process, but
+        maybe this should be called first if the process gets killed
+        """
         raise NotImplementedError
 
     def get_tasks(
@@ -51,6 +64,13 @@ class TaskTracker():
             running: bool = False,
             all_tasks: bool = False
     ) -> RunningTasks:
+        """
+        Gets tasks based on different criteria
+        key: The name of the task
+        running: Only return tasks that are running
+        all_tasks: returns all tasks that haven't been deleted regardless of
+        cooldown, running, or anything else
+        """
         if all_tasks is True:
             return self.running_tasks
         elif key != "":
@@ -80,7 +100,10 @@ class TaskTracker():
         key: str,
         running: bool,
     ) -> None:
-        '''This function only exists to do a callback without having to add Task to `set_task_running`, this is a wrapper'''
+        """
+        This function only exists to do a callback without having to add Task to `set_task_running`, this is a wrapper
+        TODO: add a _ to the front of this function
+        """
         self.set_task_running(key=key, running=running)
 
     def set_task_running(
