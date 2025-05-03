@@ -32,6 +32,7 @@ class TaskManager:
         - self.tasks - List of all running tasks from this TaskManager
         - self.last_process_number - Tracks the last process number used
         """
+        # TODO: Make self.env_data get updated whenever env_data changes
         self.env_data: EnvData = get_env_data()
 
         self.receive_queue: QueueWrapper = QueueWrapper()
@@ -52,31 +53,28 @@ class TaskManager:
         """
         Starts and stops processes
         """
-        self._update_used_cores(name, psutil.Process(os.getpid()).cpu_num(), multiprocessing.Queue())
+        logger.info(f"Starting the {name} manager")
+        self._update_used_cores(
+                name,
+                psutil.Process(
+                        os.getpid()
+                    ).cpu_num(),
+                multiprocessing.Queue()
+                )
         result = create_task(
                 self.read_queue(),
                 name=f"{name}_read_queue",
                 )
         # TODO: Remove the while True and use a callback
         while True:
-            # with open("data/environment.json", "r") as json_file:
-                # self.env_data: EnvData = load(json_file)
-            logger.debug("1234")
-
-            # I'm not sure what this code does, it appears to be for updating the env_data variable
-            for task_name in self.used_cores:
-                while not task_name[2].empty():
-                    env_data = task_name[2].get()
-                    for task in env_data['tasks'].keys():
-                        self.env_data['tasks'][task] = env_data['tasks'][task]
-
+            logger.debug(result)
             # Starts a new task
             # TODO: Should handle shutting down tasks as well
             for task in self.env_data['tasks'].keys():
-                if task in self.tasks.keys():
-                    continue
-                elif self.env_data['tasks'][task]['enabled']:
+                if self.env_data['tasks'][task]['enabled']:
                     await self.start(task)
+                elif not self.env_data['tasks'][task]['enabled']:
+                    await self.stop(task)
             await asyncio.sleep(60)
 
     def _update_used_cores(self, task: str, core: int, queue):
@@ -91,7 +89,7 @@ class TaskManager:
         """
         Starts a process regardless of if it's high priority or low priority
         """
-        logger.debug(task)
+        logger.info(f"Starting {task}")
         # Checks if it's marked as high priority and if it's already running
         # TODO: Change this to remove currently running tasks and where they are
         if self.env_data['tasks'][task]['high_priority'] and task not in [name[0] for name in self.used_cores]:
@@ -145,7 +143,7 @@ class TaskManager:
                 temp_object, send_queue = self.setup_object(
                         object_name=task,
                         )
-                async_process = TaskManager(env_copy)
+                async_process = TaskManager()
                 send_queue = await async_process.get_send_queue()
                 temp_process = multiprocessing.Process(
                         target=async_process.run_async,
@@ -164,7 +162,13 @@ class TaskManager:
                         }
                     })
                 # TODO Add queue parameter to this function call
-                self._update_used_cores('lp' + str(self.env_data['tasks'][task]['async_core']), self.env_data['tasks'][task]['async_core'])
+                self._update_used_cores(
+                        'lp' + str(
+                            self.env_data['tasks'][task]['async_core']
+                            ),
+                        self.env_data['tasks'][task]['async_core'],
+                        send_queue,
+                        )
 
     async def restart(self, task):
         """
@@ -173,7 +177,7 @@ class TaskManager:
         """
         pass
 
-    async def shutdown(self, task):
+    async def stop(self, task):
         """
         This should kill the process
         Should also have a force option and a graceful shutdown option
@@ -200,6 +204,7 @@ class TaskManager:
         """
         Standard way to read from any supported queue and then send on any supported queue
         """
+        logger.info(f"Starting read_queue()")
         while True:
             enabled_tasks = [
                 i
