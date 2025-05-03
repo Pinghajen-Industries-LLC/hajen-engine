@@ -7,9 +7,11 @@ import struct
 from multiprocessing import shared_memory
 from typing import Coroutine, Optional
 
+from hajen_engine.types.shared import EnvData
+
 logger = logging.getLogger(__name__)
 
-async def get_env_data():
+def get_env_data() -> EnvData:
     """
     Gets env_data from shared_memory and should be properly handling the memory
     reading
