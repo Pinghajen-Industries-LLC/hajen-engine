@@ -7,7 +7,7 @@ class Task(TypedDict, total=True):
     high_priority: bool
     logging_level: str
     options: dict[str, str]
-    async_core: int
+    core: int
 
 
 class Libraries(Enum):
