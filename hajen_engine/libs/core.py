@@ -13,7 +13,7 @@ import importlib
 
 from hajen_engine.libs.utils import create_task, get_env_data
 from hajen_engine.types.shared import EnvData, RunningTasks
-from hajen_engine.types.core import Task
+from hajen_engine.types.core import Task, UsedCore
 from hajen_engine.types.task_tracker import JobList
 from hajen_engine.types.communication import Packet
 from hajen_engine.libs.communication import QueueWrapper
@@ -37,9 +37,33 @@ class TaskManager:
 
         self.receive_queue: QueueWrapper = QueueWrapper()
         self.send_queue: QueueWrapper = QueueWrapper()
-        self.used_cores: List[Tuple[str, int, multiprocessing.Queue[EnvData]]] = []
+        self.used_cores: Dict[int, UsedCore] = {}
         self.tasks: Dict[str, Task] = {}
         self.last_process_number: int = 0
+
+        # This won't change unless there is a system restart, this could
+        # possibly change
+        if self.env_data['total_cores'] > multiprocessing.cpu_count():
+            error = f"""Too many cores allocated
+            ({self.env_data['total_cores']}), only
+            {multiprocessing.cpu_count()} available."""
+            logger.fatal(error)
+            raise ValueError(error)
+        elif (
+                self.env_data['total_cores'] < multiprocessing.cpu_count()
+                and self.env_data['total_cores'] > -1
+            ):
+            self.total_cores = self.env_data['total_cores']
+        else:
+            self.total_cores = multiprocessing.cpu_count()
+
+        for core in range(0, self.total_cores):
+            self.used_cores.update({
+                core: {
+                    'high_priority': False,
+                    'tasks': [],
+                    }
+                })
 
         # Takes the env_data variable and creates a dictionary of tasks
         # this allows for scoped task lists for different low priority tasks
@@ -54,13 +78,13 @@ class TaskManager:
         Starts and stops processes
         """
         logger.info(f"Starting the {name} manager")
-        self._update_used_cores(
-                name,
-                psutil.Process(
-                        os.getpid()
-                    ).cpu_num(),
-                multiprocessing.Queue()
-                )
+        # self._update_used_cores(
+                # name,
+                # psutil.Process(
+                        # os.getpid()
+                    # ).cpu_num(),
+                # multiprocessing.Queue()
+                # )
         result = create_task(
                 self.read_queue(),
                 name=f"{name}_read_queue",
@@ -77,12 +101,22 @@ class TaskManager:
                     await self.stop(task)
             await asyncio.sleep(60)
 
-    def _update_used_cores(self, task: str, core: int, queue):
+    def _update_used_cores(self, task: Task, high_priority: bool, core=-1):
         """
         Updates self.used_cores and increments self.last_process_number
         This is supposed to keep track of the used cores by the root TaskTracker
+
+        This should keep track of coores dedicated to high priority and cores
+        that can be used for low priority
         """
-        self.used_cores.append((task, core, queue))
+        # Have a dictionary of all cores
+        # this dictionary can never be larger in length than
+        # the available cores on the machine
+        # this can and should be able to be set to lower in env_data
+        # should include a field for if it's high priority or not
+        # and then not allow assigning 2 tasks if they are both trying to use
+        # the same core
+        # self.used_cores.append((task, core, queue))
         self.last_process_number += 1
 
     async def start(self, task):
@@ -92,62 +126,25 @@ class TaskManager:
         logger.info(f"Starting {task}")
         # Checks if it's marked as high priority and if it's already running
         # TODO: Change this to remove currently running tasks and where they are
-        if self.env_data['tasks'][task]['high_priority'] and task not in [name[0] for name in self.used_cores]:
+        if (
+            self.env_data['tasks'][task]['high_priority']
+            and task not in [self.used_cores[core]['tasks'] for core in
+                             self.used_cores if not
+                             self.used_cores[core]['high_priority']]
+           ):
             temp_object, send_queue = self.setup_object(
                     object_name=task,
                     )
-            logger.info("Setting up high priority tasks")
+            logger.info(f"""Setting up {task} as a {'high' if
+                                                  self.env_data['tasks'][task]['high_priority']
+                                                  else 'low'} priority task""")
             # This needs to allow setting to a certain core
             # as this might require manual core assignment
-            temp_process = multiprocessing.Process(
-                    target=temp_object.main,
-                    name=task,
-                    )
-            temp_process.start()
-            process = psutil.Process(temp_process.pid)
-            # logger.debug(process.cpu_num())
-            self.tasks.update({
-                task: {
-                    'name': task,
-                    "send_queue": send_queue,
-                    "receive_queue": self.receive_queue,
-                    'async_core': process.cpu_num(),
-                    "enabled": True,
-                    "process": temp_process,
-                    }
-                })
-            self._update_used_cores(task, process.cpu_num(), multiprocessing.Queue())
-        # This should also check if the process is already started, probably
-        # There needs to be a way to keep track of which core is dedicated to
-        # being high priority and which can share cores and which cores
-        # to share, this should be configurable
-        if not self.env_data['tasks'][task]['high_priority']:
-            if (
-                    'lp' + str(self.env_data['tasks'][task]['async_core']) in
-                    [names[0] for names in self.used_cores]
-                    ):
-                # this will add the task to the async process already running
-                for name in self.used_cores:
-                    if name[0] == task:
-                        name[2].put(task)
-                pass
-            else:
-                logger.info("Setting up low priority tasks")
-                # This is a weird way of creating a copy of env_data
-                # with only the task we want to run in it
-                # but it works I guess ¯\_(ツ)_/¯
-                # WHY DID I EVEN DO THIS?
-                env_copy = deepcopy(self.env_data)
-                task_copy = deepcopy(self.env_data['tasks'][task])
-                env_copy['tasks'] = {task: task_copy}
-                temp_object, send_queue = self.setup_object(
-                        object_name=task,
-                        )
-                async_process = TaskManager()
-                send_queue = await async_process.get_send_queue()
+            if self.env_data['tasks'][task]['high_priority']:
+                core = self._update_used_cores(self.env_data['tasks'][task],
+                                               self.env_data['tasks'][task]['high_priority'])
                 temp_process = multiprocessing.Process(
-                        target=async_process.run_async,
-                        args=(temp_object,),
+                        target=temp_object.run,
                         name=task,
                         )
                 temp_process.start()
@@ -156,19 +153,34 @@ class TaskManager:
                         'name': task,
                         "send_queue": send_queue,
                         "receive_queue": self.receive_queue,
-                        'async_core': self.env_data['tasks'][task]['async_core'],
+                        "core": core,
+                        "high_priority": True,
                         "enabled": True,
                         "process": temp_process,
                         }
                     })
-                # TODO Add queue parameter to this function call
-                self._update_used_cores(
-                        'lp' + str(
-                            self.env_data['tasks'][task]['async_core']
-                            ),
-                        self.env_data['tasks'][task]['async_core'],
-                        send_queue,
+            else:
+                core = self._update_used_cores(self.env_data['tasks'][task],
+                                               self.env_data['tasks'][task]['high_priority'],
+                                               core=self.env_data['tasks'][task]['core'])
+                # This needs to singal to each core to start a task
+                temp_process = multiprocessing.Process(
+                        target=temp_object.run,
+                        name=task,
                         )
+                temp_process.start()
+                self.tasks.update({
+                    task: {
+                        'name': task,
+                        "send_queue": send_queue,
+                        "receive_queue": self.receive_queue,
+                        "core": core,
+                        "high_priority": False,
+                        "enabled": True,
+                        "process": temp_process,
+                        }
+                    })
+        return 0
 
     async def restart(self, task):
         """
@@ -184,7 +196,7 @@ class TaskManager:
         """
         pass
 
-    def run_async(self, task):
+    def run(self, task):
         """
         This should either create the task or start an event loop
         """
@@ -299,7 +311,7 @@ class TaskClass:
             ) -> None:
         self.logger_queue.put((level.upper(), f'{self.source}:{message}'))
 
-    async def async_run(
+    async def _async_run(
             self,
             ) -> None:
         logger = logging.getLogger(__name__)
@@ -310,7 +322,13 @@ class TaskClass:
                 )
 
     def main(self) -> None:
-        asyncio.run(self.async_run(), debug=True)
+        try:
+            asyncio.get_running_loop()
+            asyncio.create_task(self._async_run())
+        except RuntimeError:
+            # TODO: Add uvloop support
+            # uvloop.install()
+            asyncio.run(self._async_run()) # TODO: add debug parameter
 
     async def run(self) -> None:
         print("The task needs to impliment run()")
