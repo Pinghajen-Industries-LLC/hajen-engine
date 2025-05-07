@@ -65,14 +65,6 @@ class TaskManager:
                     }
                 })
 
-        # Takes the env_data variable and creates a dictionary of tasks
-        # this allows for scoped task lists for different low priority tasks
-        # This might be unnecessary
-        for task in self.env_data['tasks'].keys():
-            self.tasks.update({
-                task: self.env_data['tasks'][task]
-            })
-
     async def manager(self, name: str):
         """
         Starts and stops processes
@@ -91,17 +83,21 @@ class TaskManager:
                 )
         # TODO: Remove the while True and use a callback
         while True:
-            logger.debug(result)
             # Starts a new task
             # TODO: Should handle shutting down tasks as well
             for task in self.env_data['tasks'].keys():
+                logger.debug(task)
+                logger.debug(self.tasks.keys())
+                if task in self.tasks.keys():
+                    continue
                 if self.env_data['tasks'][task]['enabled']:
                     await self.start(task)
                 elif not self.env_data['tasks'][task]['enabled']:
                     await self.stop(task)
+            logger.info("Sleeping...")
             await asyncio.sleep(60)
 
-    def _update_used_cores(self, task: Task, high_priority: bool, core=-1):
+    def _update_used_cores(self, task: Task, high_priority: bool, task_name: str, core=-1):
         """
         Updates self.used_cores and increments self.last_process_number
         This is supposed to keep track of the used cores by the root TaskTracker
@@ -116,8 +112,29 @@ class TaskManager:
         # should include a field for if it's high priority or not
         # and then not allow assigning 2 tasks if they are both trying to use
         # the same core
-        # self.used_cores.append((task, core, queue))
-        self.last_process_number += 1
+        existing_core = self.used_cores[task['core']]
+        logger.debug(existing_core)
+        if existing_core['high_priority'] and len(existing_core['tasks']) == 1:
+            return f"""{task_name} is assigned to core {task['core']} but core {task['core']}
+                is running task {existing_core['tasks'][0]} which is set to
+                high_priority and can not share it's core"""
+        elif existing_core['high_priority'] and len(existing_core['tasks']) > 1:
+            error = f"""Core {task['core']} is set to high_priority but core {task['core']}
+                has {len(existing_core['tasks'])} which is higher than the
+                allowed max of 1"""
+            raise ValueError(error)
+        elif not existing_core['high_priority'] and not high_priority:
+            existing_core['high_priority'] = high_priority
+            existing_core['tasks'].append(task_name)
+            self.used_cores.update({core: existing_core})
+        elif len(existing_core['tasks']) == 0 and high_priority:
+            existing_core['high_priority'] = high_priority
+            existing_core['tasks'] = [task_name]
+        elif len(existing_core['tasks']) > 0 and high_priority:
+            return f"""{task_name} is assigned to core {task['core']} but core {task['core']}
+                is set to be low_priority with running tasks but {task_name}
+                is set to high_priority"""
+        self.used_cores[task['core']] = existing_core
 
     async def start(self, task):
         """
@@ -126,60 +143,60 @@ class TaskManager:
         logger.info(f"Starting {task}")
         # Checks if it's marked as high priority and if it's already running
         # TODO: Change this to remove currently running tasks and where they are
-        if (
-            self.env_data['tasks'][task]['high_priority']
-            and task not in [self.used_cores[core]['tasks'] for core in
-                             self.used_cores if not
-                             self.used_cores[core]['high_priority']]
-           ):
-            temp_object, send_queue = self.setup_object(
-                    object_name=task,
+        temp_object, send_queue = self.setup_object(
+                object_name=task,
+                )
+        logger.info(f"""Setting up {task} as a {'high' if
+                                              self.env_data['tasks'][task]['high_priority']
+                                              else 'low'} priority task""")
+        # This needs to allow setting to a certain core
+        # as this might require manual core assignment
+        if self.env_data['tasks'][task]['high_priority']:
+            core = self._update_used_cores(self.env_data['tasks'][task],
+                                           self.env_data['tasks'][task]['high_priority'],
+                                           task,
+                                           )
+            temp_process = multiprocessing.Process(
+                    target=self.run,
+                    args=(temp_object, ),
+                    name=task,
                     )
-            logger.info(f"""Setting up {task} as a {'high' if
-                                                  self.env_data['tasks'][task]['high_priority']
-                                                  else 'low'} priority task""")
-            # This needs to allow setting to a certain core
-            # as this might require manual core assignment
-            if self.env_data['tasks'][task]['high_priority']:
-                core = self._update_used_cores(self.env_data['tasks'][task],
-                                               self.env_data['tasks'][task]['high_priority'])
-                temp_process = multiprocessing.Process(
-                        target=temp_object.run,
-                        name=task,
-                        )
-                temp_process.start()
-                self.tasks.update({
-                    task: {
-                        'name': task,
-                        "send_queue": send_queue,
-                        "receive_queue": self.receive_queue,
-                        "core": core,
-                        "high_priority": True,
-                        "enabled": True,
-                        "process": temp_process,
-                        }
-                    })
-            else:
-                core = self._update_used_cores(self.env_data['tasks'][task],
-                                               self.env_data['tasks'][task]['high_priority'],
-                                               core=self.env_data['tasks'][task]['core'])
-                # This needs to singal to each core to start a task
-                temp_process = multiprocessing.Process(
-                        target=temp_object.run,
-                        name=task,
-                        )
-                temp_process.start()
-                self.tasks.update({
-                    task: {
-                        'name': task,
-                        "send_queue": send_queue,
-                        "receive_queue": self.receive_queue,
-                        "core": core,
-                        "high_priority": False,
-                        "enabled": True,
-                        "process": temp_process,
-                        }
-                    })
+            temp_process.start()
+            self.tasks.update({
+                task: {
+                    'name': task,
+                    "send_queue": send_queue,
+                    "receive_queue": self.receive_queue,
+                    "core": core,
+                    "high_priority": True,
+                    "enabled": True,
+                    "process": temp_process,
+                    }
+                })
+        else:
+            core = self._update_used_cores(self.env_data['tasks'][task],
+                                           self.env_data['tasks'][task]['high_priority'],
+                                           task,
+                                           core=self.env_data['tasks'][task]['core'],
+                                           )
+            # This needs to signal to each core to start a task
+            temp_process = multiprocessing.Process(
+                    target=self.run,
+                    name=task,
+                    )
+            temp_process.start()
+            self.tasks.update({
+                task: {
+                    'name': task,
+                    "send_queue": send_queue,
+                    "receive_queue": self.receive_queue,
+                    "core": core,
+                    "high_priority": False,
+                    "enabled": True,
+                    "process": temp_process,
+                    }
+                })
+        logger.debug(f"{self.used_cores}")
         return 0
 
     async def restart(self, task):

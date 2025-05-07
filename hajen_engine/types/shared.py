@@ -15,6 +15,7 @@ class RunningTasks(TypedDict, total=True):
 
 
 class EnvData(TypedDict, total=True):
+    total_cores: int
     debug: bool
     root: Task
     core: Task
