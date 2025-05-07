@@ -85,6 +85,7 @@ async def _async_run():
             coroutine=core.main(),
             name='root',
             )
+    await result
 
 
 def run() -> None:
