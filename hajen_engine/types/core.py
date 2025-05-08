@@ -1,13 +1,19 @@
 from enum import Enum
-from typing import List, TypedDict
+from multiprocessing import Process
+from typing import List, Optional, TypedDict
 
+from hajen_engine.libs.communication import QueueWrapper
 
 class Task(TypedDict, total=True):
-    enabled: bool
-    high_priority: bool
-    logging_level: str
-    options: dict[str, str]
+    name: str
+    send_queue: Optional[QueueWrapper]
+    receive_queue: QueueWrapper
     core: int
+    high_priority: bool
+    enabled: bool
+    process: Optional[Process]
+    logging_level: str
+    options: Optional[dict[str, str]]
 
 class UsedCore(TypedDict):
     high_priority: bool
