@@ -8,6 +8,7 @@ This project is currently undergoing a rewrite
     - have task that updates shared_memory on env_data change
 
 # Known issues:
+    - tasks can't communicate properly yet
     - add a check for if a process or driver is enabled
     - inefficient use of queues
     - KeyboardInterrupt isn't handled properly across all threads

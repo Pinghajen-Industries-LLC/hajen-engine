@@ -158,12 +158,6 @@ class TaskManager:
                                            self.env_data['tasks'][task]['high_priority'],
                                            task,
                                            )
-            temp_process = multiprocessing.Process(
-                    target=self.run,
-                    args=(task, ),
-                    name=task,
-                    )
-            temp_process.start()
             self.tasks.update({
                 task: {
                     'name': task,
@@ -172,11 +166,18 @@ class TaskManager:
                     "core": core,
                     "high_priority": self.env_data['tasks'][task]['high_priority'],
                     "enabled": True,
-                    "process": temp_process,
+                    "process": None,
                     "logging_level": self.env_data['tasks'][task]['logging_level'],
                     "options": None,
                     }
                 })
+            temp_process = multiprocessing.Process(
+                    target=self.run,
+                    args=(task, ),
+                    name=task,
+                    )
+            temp_process.start()
+            self.tasks[task]["process"] = temp_process
         else:
             if self.name == 'root':
                 # This branch needs to start up a new process on the right core
@@ -215,10 +216,6 @@ class TaskManager:
                                            task,
                                            core=self.env_data['tasks'][task]['core'],
                                            )
-                result = await create_task(
-                        self.async_run(task),
-                        name=f"task",
-                        )
                 self.tasks.update({
                     task: {
                         'name': task,
@@ -232,6 +229,10 @@ class TaskManager:
                         "options": None,
                         }
                     })
+                result = await create_task(
+                        self.async_run(task),
+                        name=f"task",
+                        )
             # This needs to signal to each core to start a task
         logger.debug(f"{self.used_cores}")
         return 0
@@ -288,6 +289,7 @@ class TaskManager:
                 for i in self.tasks
                 if self.tasks[i]['enabled']
             ]
+            # logger.debug(enabled_tasks)
 
             if not enabled_tasks:
                 # TODO: this needs to be redone
@@ -303,6 +305,9 @@ class TaskManager:
                 logger.debug(packet)
                 logger.debug("Getting destination")
                 destination = packet["destination"]
+                if self.tasks[destination]['send_queue'] is None:
+                    logger.error(f"self.tasks[{destination}]['send_queue'] is not set")
+                    continue
                 logger.debug("Putting into queue")
                 # TODO: add a check for if a task is disabled
                 self.tasks[destination]['send_queue'].put(
