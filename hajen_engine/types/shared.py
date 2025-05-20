@@ -17,6 +17,7 @@ class RunningTasks(TypedDict, total=True):
 class EnvData(TypedDict, total=True):
     debug: bool
     total_cores: int
+    env: str
     root: Task
     core: Task
     tasks: dict[str, Task]
