@@ -16,12 +16,15 @@ def get_env_data() -> EnvData:
     Gets env_data from shared_memory and should be properly handling the memory
     reading
     """
-    shm = shared_memory.SharedMemory(name='env_data')
-    try:
-        size = struct.unpack('Q', shm.buf[:8])[0]
-        return json.loads(bytes(shm.buf[8:8 + size]).decode('utf-8'))
-    finally:
-        shm.close()
+    with open("data/environment.json", "r") as file:
+        env_data: EnvData = json.load(file)
+    return env_data
+    # shm = shared_memory.SharedMemory(name='env_data')
+    # try:
+        # size = struct.unpack('Q', shm.buf[:8])[0]
+        # return json.loads(bytes(shm.buf[8:8 + size]).decode('utf-8'))
+    # finally:
+        # shm.close()
 
 def create_task(
         coroutine: Coroutine,
