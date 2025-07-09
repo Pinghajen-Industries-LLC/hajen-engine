@@ -87,7 +87,7 @@ def run() -> None:
         except RuntimeError:
             # TODO: Add uvloop support
             # uvloop.install()
-            asyncio.run(_async_run()) # TODO: add debug parameter
+            asyncio.run(_async_run(), debug=env_data["debug"])
     # TODO: add better program quitting
     except KeyboardInterrupt:
         quit()
