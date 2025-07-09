@@ -1,5 +1,4 @@
 import asyncio
-import atexit
 import datetime
 import json
 import logging
@@ -7,12 +6,13 @@ import uvloop
 import struct
 import sys
 
-from multiprocessing import shared_memory
 
 # import cProfile
 # import pstats
 
 from logging.handlers import RotatingFileHandler
+# from watchdog.observers import Observer
+
 from hajen_engine.core.core import Core
 from hajen_engine.libs.utils import create_task, get_env_data
 from hajen_engine.types.shared import EnvData
@@ -20,26 +20,14 @@ from hajen_engine.types.shared import EnvData
 global __version__
 __version__ = "engine-0.0.3b1"
 
+global env_data
 with open("data/environment.json", "r") as file:
     env_data: EnvData = json.load(file)
 
-env_data_bytes = json.dumps(env_data).encode('utf-8')
-size = len(env_data_bytes) + 8
-shm = shared_memory.SharedMemory(create=True, size=size, name='env_data')
-size_bytes = struct.pack('Q', size)
-shm.buf[:8] = size_bytes
-shm.buf[8:8 + len(env_data_bytes)] = env_data_bytes
+def update_env_data(event):
+    with open("data/environment.json", "r") as file:
+        env_data: EnvData = json.load(file)
 
-def cleanup_shared_memory():
-    logger = logging.getLogger(__name__)
-    try:
-        shm.close()
-        shm.unlink()
-        logger.info("Shared memory cleaned up")
-    except Exception as e:
-        logger.error(f"Error cleaning up shared memory: {e}")
-
-atexit.register(cleanup_shared_memory)
 
 def handle_exception(exc_type, exc_value, exc_traceback):
     logger = logging.getLogger(__name__)
