@@ -42,5 +42,6 @@ class Core:
         """
         Main loop for the core
         """
+        # multiprocessing.set_start_method('spawn')
         while True:
             await self.root_manager.manager()

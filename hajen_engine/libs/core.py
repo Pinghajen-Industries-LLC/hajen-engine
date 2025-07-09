@@ -305,6 +305,7 @@ class TaskManager:
                 logger.debug(packet)
                 logger.debug("Getting destination")
                 destination = packet["destination"]
+                # TODO: This needs a check for is destination isn't in self.tasks
                 if self.tasks[destination]['send_queue'] is None:
                     logger.error(f"self.tasks[{destination}]['send_queue'] is not set")
                     continue
