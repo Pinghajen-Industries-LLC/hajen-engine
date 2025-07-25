@@ -1,24 +1,44 @@
-import multiprocessing
+from asyncio import Task
+import asyncio
 from copy import deepcopy
-import psutil
-import os
-from typing import Dict, Optional, List, Tuple
 from datetime import datetime, timezone
+import importlib
+import json
 from json import load
 import logging
-from asyncio import Task
+import multiprocessing
+import os
+import threading
+from typing import Dict, List, Optional, Tuple
 
-import asyncio
-import importlib
+import psutil
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
-from hajen_engine.libs.utils import create_task, get_env_data
-from hajen_engine.types.shared import EnvData, RunningTasks
-from hajen_engine.types.core import Task, UsedCore
-from hajen_engine.types.task_tracker import JobList
-from hajen_engine.types.communication import Packet
 from hajen_engine.libs.communication import QueueWrapper
+from hajen_engine.libs.utils import create_task, get_env_data
+from hajen_engine.types.communication import Packet
+from hajen_engine.types.core import Task, UsedCore
+from hajen_engine.types.shared import EnvData, RunningTasks
+from hajen_engine.types.task_tracker import JobList
 
 logger = logging.getLogger(__name__)
+
+
+def load_env_data():
+    global env_data
+    with open("data/environment.json", "r") as file:
+        env_data = json.load(file)
+    logger.info("env_data reloaded")
+
+class EnvFileHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        path = event.src_path
+        if isinstance(path, bytes):
+            path = path.decode('utf-8')
+        if path.endswith("environment.json"):
+            load_env_data()
+            logger.info("environment.json changed")
 
 
 class TaskManager:
@@ -355,6 +375,19 @@ class TaskClass:
 
         self.logger_queue: multiprocessing.Queue = multiprocessing.Queue()
 
+        self._start_env_data_watcher()
+
+    def _start_env_data_watcher(self):
+        load_env_data()
+
+        event_handler = EnvFileHandler()
+        observer = Observer()
+        observer.schedule(event_handler, path="data", recursive=False)
+        observer_thread = threading.Thread(target=observer.start, daemon=True)
+        observer_thread.start()
+
+        self._observer = observer
+
     async def _read_queue(self,
                           ) -> list[Packet]:
         queue: list[Packet] = []
@@ -515,8 +548,10 @@ class TaskClass:
         return {"result": 0}
 
     async def shutdown(self) -> dict:
-        raise NotImplementedError
-        asyncio.current_task().cancel()
+        if hasattr(self, "_observer"):
+            self._observer.stop()
+            self._observer.join()
+        # asyncio.current_task().cancel()
         return {"result": 0}
 
 
